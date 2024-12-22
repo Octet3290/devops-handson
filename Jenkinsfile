@@ -12,6 +12,7 @@ pipeline {
     stages {
         stage('Clone Repository') {
             steps {
+                git url: 'https://github.com/Octet3290/devops-handson.git', branch: 'main'
                 checkout scm
             }
         }
