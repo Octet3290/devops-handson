@@ -2,24 +2,26 @@ pipeline {
     agent any
 
     environment {
-        AWS_REGION = 'us-east-1' 
-        ECR_REPO_URI = '899287366687.dkr.ecr.us-east-1.amazonaws.com/godigital' 
-        IMAGE_NAME = 'godigital'
-        AWS_CREDENTIALS = 'aws-credentials' 
+        AWS_ACCESS_KEY_ID = credentials('AWS_ACCESS_KEY_ID')
+        AWS_SECRET_ACCESS_KEY = credentials('AWS_SECRET_ACCESS_KEY')
+        AWS_REGION = 'us-east-1'
+        ECR_REPO_URI = '899287366687.dkr.ecr.us-east-1.amazonaws.com/godigital'
+        DOCKER_IMAGE_NAME = 'godigital'
+        DOCKER_TAG = 'latest'
+        TERRAFORM_DIR = './terraform'
     }
 
     stages {
         stage('Checkout Code') {
             steps {
-                git branch: 'main', url: 'https://github.com/Octet3290/devops-handson'
-               
+                checkout scm
             }
         }
 
         stage('Build Docker Image') {
             steps {
                 script {
-                    sh 'docker build -t $IMAGE_NAME .'
+                    sh 'docker build -t $DOCKER_IMAGE_NAME:$DOCKER_TAG .'
                 }
             }
         }
@@ -32,50 +34,29 @@ pipeline {
             }
         }
 
-        stage('Tag Docker Image') {
-            steps {
-                script {
-                    sh 'docker tag $IMAGE_NAME:latest $ECR_REPO_URI:latest'
-                }
-            }
-        }
-
         stage('Push Docker Image to ECR') {
             steps {
                 script {
-                    sh 'docker push $ECR_REPO_URI:latest'
+                    sh 'docker tag $DOCKER_IMAGE_NAME:$DOCKER_TAG $ECR_REPO_URI:$DOCKER_TAG'
+                    sh 'docker push $ECR_REPO_URI:$DOCKER_TAG'
                 }
             }
         }
 
-        stage('Apply Terraform') {
+        stage('Terraform Init and Apply') {
             steps {
                 script {
-
-                    sh 'terraform init'
-
-             
-                    sh 'terraform apply -auto-approve'
+                    sh 'cd $TERRAFORM_DIR && terraform init && terraform apply -auto-approve'
                 }
             }
         }
 
-        stage('Test Lambda') {
+        stage('Deploy Lambda') {
             steps {
                 script {
-              
-                    echo 'Lambda function has been successfully deployed.'
+                    sh 'aws lambda update-function-code --function-name s3_to_rds_lambda --image-uri $ECR_REPO_URI:$DOCKER_TAG'
                 }
             }
-        }
-    }
-
-    post {
-        success {
-            echo 'Build and deployment completed successfully!'
-        }
-        failure {
-            echo 'Build or deployment failed.'
         }
     }
 }
