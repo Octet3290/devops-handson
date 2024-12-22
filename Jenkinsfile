@@ -2,17 +2,15 @@ pipeline {
     agent any
 
     environment {
-        AWS_ACCESS_KEY_ID = credentials('AWS_ACCESS_KEY_ID')
-        AWS_SECRET_ACCESS_KEY = credentials('AWS_SECRET_ACCESS_KEY')
+        AWS_ACCESS_KEY_ID = credentials('aws-access-key-id')  // ID of your Access Key ID credential
+        AWS_SECRET_ACCESS_KEY = credentials('aws-secret-access-key')  
         AWS_REGION = 'us-east-1'
-        ECR_REPO_URI = '899287366687.dkr.ecr.us-east-1.amazonaws.com/godigital'
-        DOCKER_IMAGE_NAME = 'godigital'
-        DOCKER_TAG = 'latest'
-        TERRAFORM_DIR = './terraform'
+        ECR_URI = '899287366687.dkr.ecr.us-east-1.amazonaws.com/godigital'
+        IMAGE_TAG = 'latest'
     }
 
     stages {
-        stage('Checkout Code') {
+        stage('Clone Repository') {
             steps {
                 checkout scm
             }
@@ -21,15 +19,18 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 script {
-                    sh 'docker build -t $DOCKER_IMAGE_NAME:$DOCKER_TAG .'
+                    docker.build("godigital:${IMAGE_TAG}")
                 }
             }
         }
 
-        stage('Login to ECR') {
+        stage('Login to AWS ECR') {
             steps {
                 script {
-                    sh 'aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REPO_URI'
+                    // Login to AWS ECR using AWS CLI
+                    sh """
+                    aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_URI}
+                    """
                 }
             }
         }
@@ -37,16 +38,29 @@ pipeline {
         stage('Push Docker Image to ECR') {
             steps {
                 script {
-                    sh 'docker tag $DOCKER_IMAGE_NAME:$DOCKER_TAG $ECR_REPO_URI:$DOCKER_TAG'
-                    sh 'docker push $ECR_REPO_URI:$DOCKER_TAG'
+                    // Push the Docker image to ECR
+                    sh """
+                    docker tag godigital:${IMAGE_TAG} ${ECR_URI}:${IMAGE_TAG}
+                    docker push ${ECR_URI}:${IMAGE_TAG}
+                    """
                 }
             }
         }
 
-        stage('Terraform Init and Apply') {
+        stage('Terraform Init') {
             steps {
                 script {
-                    sh 'cd $TERRAFORM_DIR && terraform init && terraform apply -auto-approve'
+                    // Initialize Terraform
+                    sh 'terraform init'
+                }
+            }
+        }
+
+        stage('Terraform Apply') {
+            steps {
+                script {
+                    // Apply Terraform to create resources in AWS
+                    sh 'terraform apply -auto-approve'
                 }
             }
         }
@@ -54,9 +68,19 @@ pipeline {
         stage('Deploy Lambda') {
             steps {
                 script {
-                    sh 'aws lambda update-function-code --function-name s3_to_rds_lambda --image-uri $ECR_REPO_URI:$DOCKER_TAG'
+                    // Deploy Lambda function with Docker image
+                    sh """
+                    aws lambda update-function-code --function-name s3_to_rds_lambda \
+                        --image-uri ${ECR_URI}:${IMAGE_TAG}
+                    """
                 }
             }
+        }
+    }
+
+    post {
+        always {
+            cleanWs() 
         }
     }
 }
