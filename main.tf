@@ -30,7 +30,6 @@ resource "aws_lambda_function" "lambda" {
   function_name = "s3_to_rds_lambda"
   package_type  = "Image"  # Set package type to Image
 
-  # Docker image URI from ECR
   image_uri = "899287366687.dkr.ecr.us-east-1.amazonaws.com/godigital:latest"
 
   timeout = 900  # Adjust based on your processing time
@@ -45,7 +44,7 @@ resource "aws_lambda_function" "lambda" {
     }
   }
 
-  # Lambda needs permissions, defined via IAM role
+ 
   role = aws_iam_role.lambda_role.arn
 }
 
